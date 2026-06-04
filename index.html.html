@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>태영EMC 식당 출입</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="식당 출입">
+<meta name="theme-color" content="#0f2c4d">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    margin: 0; background: #0f2c4d; color: #fff;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 28px 0; user-select: none;
+  }
+  .wrap { width: 100%; max-width: 440px; padding: 0 22px; }
+  h1 { font-size: 26px; text-align: center; margin: 4px 0 2px; letter-spacing: -0.5px; }
+  .sub { text-align: center; color: #9bb8d6; font-size: 14px; margin-bottom: 20px; }
+  .clock { text-align: center; font-size: 40px; font-weight: 800; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+  .date { text-align: center; color: #9bb8d6; font-size: 15px; margin-bottom: 26px; }
+  label { display:block; font-size: 16px; color:#cfe0f2; margin-bottom: 10px; }
+  select {
+    width: 100%; padding: 20px; font-size: 22px; border-radius: 14px;
+    border: none; margin-bottom: 24px; background: #fff; color: #111; font-weight: 600;
+  }
+  .btns { display: flex; gap: 14px; margin-bottom: 20px; }
+  button {
+    flex: 1; padding: 30px 0; font-size: 28px; font-weight: 800;
+    border: none; border-radius: 18px; color: #fff;
+  }
+  .in  { background: #1e8e3e; }
+  .out { background: #d93025; }
+  button:active { transform: scale(0.97); }
+  button:disabled { opacity: 0.45; }
+  .status {
+    text-align: center; font-size: 18px; min-height: 60px; padding: 16px;
+    border-radius: 14px; line-height: 1.45;
+  }
+  .ok   { background: #1e3a26; color: #9be3ab; font-weight: 700; }
+  .err  { background: #3a1e1e; color: #f0a8a0; }
+  .info { color: #9bb8d6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>태영EMC 식당 출입</h1>
+  <div class="sub">QR 스캔 식당 출입 시스템</div>
+  <div class="clock" id="clock">--:--:--</div>
+  <div class="date" id="date">불러오는 중...</div>
+
+  <label>본인 이름을 선택하세요</label>
+  <select id="empSelect"><option value="">— 명단 불러오는 중 —</option></select>
+
+  <div class="btns">
+    <button class="in"  id="btnIn"  onclick="record('입장')" disabled>입장</button>
+    <button class="out" id="btnOut" onclick="record('퇴장')" disabled>퇴장</button>
+  </div>
+  <div class="status info" id="status">이름을 선택하면 버튼이 활성화됩니다.</div>
+</div>
+
+<script>
+  // ===== 여기에 본인 Apps Script 웹앱 주소(/exec)를 넣으세요 =====
+  var BACKEND_URL = "https://script.google.com/macros/s/AKfycbysP-zZgVABrdmEFiRyxtH1QZFz_ONNRLyfLe0W9RCwimRbSZQAq0bl5pgvCfCPrsIF/exec";
+  // ===========================================================
+
+  var employees = [];
+
+  function tick() {
+    var d = new Date(), p = function(n){ return (n<10?'0':'')+n; };
+    document.getElementById('clock').textContent = p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+    var days = ['일','월','화','수','목','금','토'];
+    document.getElementById('date').textContent =
+      d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 ('+days[d.getDay()]+')';
+  }
+  setInterval(tick, 1000); tick();
+
+  // 명단 로드 (GET)
+  fetch(BACKEND_URL + "?action=list")
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      employees = res.employees || [];
+      var sel = document.getElementById('empSelect');
+      sel.innerHTML = '<option value="">— 이름 선택 —</option>';
+      employees.forEach(function(e, i){
+        var o = document.createElement('option');
+        o.value = i; o.textContent = e.name + (e.dept ? ' ('+e.dept+')' : '');
+        sel.appendChild(o);
+      });
+    })
+    .catch(function(){ setStatus('명단을 불러오지 못했습니다. 인터넷 연결을 확인하세요.', 'err'); });
+
+  document.getElementById('empSelect').addEventListener('change', function(){
+    var on = this.value !== '';
+    document.getElementById('btnIn').disabled = !on;
+    document.getElementById('btnOut').disabled = !on;
+    if (on) setStatus('입장 또는 퇴장 버튼을 누르세요.', 'info');
+  });
+
+  function setStatus(msg, cls){
+    var el = document.getElementById('status');
+    el.textContent = msg; el.className = 'status ' + (cls||'info');
+  }
+  function lockBtns(b){ document.getElementById('btnIn').disabled=b; document.getElementById('btnOut').disabled=b; }
+  function reEnable(){ var on=document.getElementById('empSelect').value!==''; lockBtns(!on); }
+
+  function record(type){
+    var sel = document.getElementById('empSelect');
+    if (sel.value === '') { setStatus('먼저 이름을 선택하세요.', 'err'); return; }
+    var emp = employees[parseInt(sel.value,10)];
+    lockBtns(true);
+    setStatus('위치 확인 중... 잠시만요.', 'info');
+
+    if (!navigator.geolocation){ setStatus('이 기기는 위치를 지원하지 않습니다.', 'err'); reEnable(); return; }
+    navigator.geolocation.getCurrentPosition(
+      function(pos){ send(emp, type, pos.coords.latitude, pos.coords.longitude); },
+      function(){ setStatus('위치 권한이 필요합니다. 위치를 허용한 뒤 다시 시도하세요.', 'err'); reEnable(); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  function send(emp, type, lat, lng){
+    setStatus('기록 중...', 'info');
+    fetch(BACKEND_URL, {
+      method: "POST",
+      // Apps Script는 text/plain로 보내면 CORS 사전요청 없이 통과됩니다
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ name: emp.name, dept: emp.dept, type: type, lat: lat, lng: lng })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      setStatus(res.ok ? (emp.name+'님 '+type+' 완료! ('+(res.time||'')+')') : res.msg, res.ok ? 'ok':'err');
+      if (res.ok) document.getElementById('empSelect').value = '';
+      reEnable();
+    })
+    .catch(function(){ setStatus('전송 실패. 인터넷 연결을 확인하고 다시 시도하세요.', 'err'); reEnable(); });
+  }
+</script>
+</body>
+</html>
