@@ -23,7 +23,9 @@
 </style>
 </head>
 <body>
-  <header><h1>🏭 출퇴근</h1></header>
+  <header><h1>🏭 출퇴근</h1>
+    <button id="flipBtn" style="margin-top:8px;padding:8px 18px;font-size:15px;border:none;border-radius:10px;background:#2b6cb0;color:#fff;font-weight:700;">📷 카메라 전환 (앞/뒤)</button>
+  </header>
   <div id="status">시작하는 중...</div>
   <div class="stage">
     <video id="v" playsinline muted autoplay></video>
@@ -75,17 +77,39 @@
   }
   function onDetected(data){ var now=Date.now(); if(data===lastData && (now-lastT)<3000) return; lastData=data; lastT=now; send(data); }
 
-  navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" } })
-    .then(function(stream){
-      video.srcObject=stream; video.play();
-      setStatus('카메라 켜짐. 인식 방식 확인 중...');
-      if ('BarcodeDetector' in window) {
-        try { detector = new BarcodeDetector({ formats:['qr_code'] }); setStatus('내장 인식 사용. 카드를 비춰주세요'); loopNative(); return; }
-        catch(e){ detector=null; }
-      }
-      setStatus('내장 인식 없음. jsQR 불러오는 중...'); loadJsQR();
-    })
-    .catch(function(e){ setStatus('카메라 오류: '+e.message); });
+  var curFacing = localStorage.getItem('camFacing') || 'environment';
+  var curStream = null, started = false;
+
+  function startCamera(facing){
+    // 기존 스트림 끄기
+    if(curStream){ curStream.getTracks().forEach(function(t){ t.stop(); }); }
+    navigator.mediaDevices.getUserMedia({ video:{ facingMode: facing } })
+      .then(function(stream){
+        curStream = stream;
+        video.srcObject = stream; video.play();
+        curFacing = facing;
+        try { localStorage.setItem('camFacing', facing); } catch(e){}
+        setStatus('카메라(' + (facing==='user'?'전면':'후면') + ') 켜짐. 카드를 비춰주세요');
+        if(started) return;   // 인식 루프는 한 번만 시작
+        started = true;
+        if ('BarcodeDetector' in window) {
+          try { detector = new BarcodeDetector({ formats:['qr_code'] }); loopNative(); return; }
+          catch(e){ detector=null; }
+        }
+        loadJsQR();
+      })
+      .catch(function(e){
+        // 요청한 카메라가 없으면 반대쪽으로 시도
+        if(facing==='user'){ setStatus('전면 카메라 없음 → 후면으로'); startCamera('environment'); }
+        else { setStatus('카메라 오류: '+e.message); }
+      });
+  }
+
+  document.getElementById('flipBtn').addEventListener('click', function(){
+    startCamera(curFacing === 'user' ? 'environment' : 'user');
+  });
+
+  startCamera(curFacing);
 
   function loopNative(){
     if(!busy && video.readyState>=2){
