@@ -10215,22 +10215,32 @@ function findAlignmentPattern(matrix, alignmentPatternQuads, topRight, topLeft, 
     .catch(function(err){ hint.textContent = ''; showResult({ ok:false, msg:'전송 오류. 인터넷 확인' }); });
   }
 
+  var frameCount = 0;
   function tick() {
+    frameCount++;
     if (video.readyState === video.HAVE_ENOUGH_DATA && !busy) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      // 디버그: 영상 크기 표시
+      if (canvas.width === 0) {
+        hint.textContent = '카메라 영상 크기 0 (로딩중) ' + frameCount;
+        requestAnimationFrame(tick); return;
+      }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      var code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+      var code = jsQR(img.data, img.width, img.height);
       if (code && code.data) {
+        hint.textContent = '✅ 인식: ' + code.data;
         var now = Date.now();
-        // 같은 카드 3초 내 재인식 방지 (화면단)
         if (code.data === lastPayload && (now - lastTime) < 3000) {
           // skip
         } else {
           lastPayload = code.data; lastTime = now;
           send(code.data);
         }
+      } else {
+        // 디버그: 영상은 들어오는데 QR 못 읽는 중
+        hint.textContent = '카드를 비춰주세요 (영상 ' + canvas.width + 'x' + canvas.height + ')';
       }
     }
     requestAnimationFrame(tick);
